@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-// import { ethers } from 'ethers';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
   createWalletClient,
@@ -22,7 +21,7 @@ export class AirdropService {
   private decimals: number = 18;
   private privateKey: `0x${string}`;
   public account: Account;
-  private client: WalletClient;
+  private wallet: WalletClient;
   private nonce: number = 0;
 
   constructor() {
@@ -30,31 +29,21 @@ export class AirdropService {
     this.balances.set('owner', this.totalSupply);
     this.privateKey = process.env.PRIVATE_KEY as `0x${string}`;
     this.account = privateKeyToAccount(this.privateKey);
-    this.client = createWalletClient({
+    console.log('account 🚀🚀🚀', this.account);
+    this.wallet = createWalletClient({
+      account: this.account,
       chain: sepolia,
       transport: http(),
     });
   }
-
-  async getBalance(): Promise<string> {
-    const balanceHex: string = await this.client.request({
-      method: 'eth_getBalance',
-      params: [this.account.address, 'latest'],
-    });
-    console.log('balanceHex 🟢🟢🟢', balanceHex);
-    const balance = BigInt(balanceHex);
-    console.log('balance 🟢🟢🟢', balance);
-    return (balance / BigInt(1e18)).toString(); // Convert Wei to Ether
-  }
-
   async sign(recipient: string): Promise<ISignResponse> {
     if (!isAddress(recipient)) {
       throw new Error('Invalid address');
     }
-    const amount = 1000000000000000000;
+    const amount = 1e10;
     this.nonce++;
     const deadline = Math.floor(
-      new Date(Date.now() + 1000 * 60 * 60 * 24).getTime() / 1000,
+      new Date(Date.now() / 1000 + 60 * 60 * 1).getTime(),
     );
 
     // 构建消息哈希
@@ -65,11 +54,12 @@ export class AirdropService {
       deadline,
     );
 
-    const signature = await this.client.signMessage({
+    const signature = await this.wallet.signMessage({
       account: this.account,
       message: { raw: toBytes(messageHash) },
     });
 
+    // 调用合约发送token
     return {
       amount,
       nonce: this.nonce,
@@ -85,28 +75,17 @@ export class AirdropService {
     nonce: number,
     deadline: number,
   ): string {
-    const types = ['address', 'uint256', 'uint256', 'uint32'];
+    const types = ['address', 'uint256', 'uint256', 'uint256'];
     const values = [recipient, amount, nonce, deadline];
-    const packedData = encodePacked(types, values);
-    const messageHash = keccak256(packedData);
+    const messageHash = keccak256(encodePacked(types, values));
     return messageHash;
   }
 
-  // 转账
-  //   transfer(to: string, amount: number): boolean {
-  //     const fromBalance = this.getBalance();
-  //     if (fromBalance < amount) {
-  //       throw new Error('余额不足');
-  //     }
-  //     this.balances.set(this.account.address, fromBalance - amount);
-  //     this.balances.set(to, this.getBalance(to) + amount);
-  //     return true;
-  //   }
-
-  //   // 空投
-  //   airdrop(recipients: string[], amount: number): void {
-  //     recipients.forEach((recipient) => {
-  //       this.transfer('owner', recipient, amount);
-  //     });
-  //   }
+  async getBalance(): Promise<string> {
+    const balanceHex: string = await this.wallet.request({
+      method: 'eth_getBalance',
+      params: [this.account.address, 'latest'],
+    });
+    return balanceHex; // Convert Wei to Ether
+  }
 }
